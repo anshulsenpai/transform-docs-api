@@ -80,6 +80,7 @@ Your API will be running at `http://localhost:5050` 🚀
 | `/api/documents/verify` | `POST` | Verify document authenticity |
 
 🔍 How It Works
+
 1️⃣ User logs in and receives a JWT token.  
 2️⃣ Uploads a document (PDF/Image) using `/api/documents/upload`.  
 3️⃣ The system:
