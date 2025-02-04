@@ -24,17 +24,18 @@ We provide an AI-driven secure document management system that:
 
 
 🛠 Tech Stack
-| Technology  | Usage  |
-|||
-| Node.js + Express | Backend API Server |
-| MongoDB + Mongoose | NoSQL Database for storing documents |
-| TypeScript | Ensures type safety and scalability |
-| Multer | File upload middleware for handling PDFs and images |
-| pdf-poppler | Converts PDFs into images for OCR processing |
-| Tesseract.js | Performs OCR to extract text from images/PDFs |
-| JWT (JSON Web Token) | Secure authentication for users |
-| Bcrypt.js | Hashing passwords for authentication security |
+Here is your **Tech Stack** in a properly formatted table:
 
+| **Technology**         | **Usage**                                           |
+|------------------------|----------------------------------------------------|
+| **Node.js + Express**  | Backend API Server                                |
+| **MongoDB + Mongoose** | NoSQL Database for storing documents              |
+| **TypeScript**         | Ensures type safety and scalability               |
+| **Multer**            | File upload middleware for handling PDFs and images |
+| **pdf-poppler**       | Converts PDFs into images for OCR processing       |
+| **Tesseract.js**      | Performs OCR to extract text from images/PDFs      |
+| **JWT (JSON Web Token)** | Secure authentication for users                 |
+| **Bcrypt.js**         | Hashing passwords for authentication security      |
 
 
 🚀 Features
