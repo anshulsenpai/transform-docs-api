@@ -397,7 +397,7 @@ export const downloadFileService = async (
 
     if (!document) {
       throw new CustomError(
-        "Unauthorized: You do not have access to this file",
+        "Forbidden: You do not have access to this file",
         403
       );
     }

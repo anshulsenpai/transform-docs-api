@@ -20,7 +20,7 @@ export const uploadDocument = async (
     }
 
     if (!req.user) {
-      throw new CustomError("User not authenticated", 403);
+      throw new CustomError("Unauthorized", 401);
     }
 
     const { name, description } = req.body;
@@ -49,7 +49,7 @@ export const getUserDocumentsController = async (
   try {
     const userId = req?.user?.userId;
     if (!userId) {
-      throw new CustomError("Unauthorized", 403);
+      throw new CustomError("Unauthorized", 401);
     }
     const documents = await getUserDocumentService(userId);
     successResponse(res, "User documents retrieved successfully!", documents);
@@ -86,7 +86,7 @@ export const downloadFileController = async (
     const { fileId } = req.params;
 
     if (!userId) {
-      throw new CustomError("Unauthorized", 403);
+      throw new CustomError("Unauthorized", 401);
     }
 
     if (!fileId) {
