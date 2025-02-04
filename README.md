@@ -15,6 +15,7 @@ In organizations, students, and legal document handling, verifying and categoriz
 
 💡 Our Solution
 We provide an AI-driven secure document management system that:
+
 ✅ Uses OCR (Tesseract.js) to extract text from scanned documents.  
 ✅ Uses AI-based classification to organize files into categories.  
 ✅ Hashes every file (SHA-256) to prevent duplicate uploads.  
@@ -39,6 +40,7 @@ Here is your **Tech Stack** in a properly formatted table:
 
 
 🚀 Features
+
 ✅ Secure User Authentication (Register/Login using JWT)  
 ✅ Upload Documents (PDF, Images)  
 ✅ Classify Documents Automatically (e.g., Question Papers, Notices)  
