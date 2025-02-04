@@ -46,80 +46,25 @@ We provide an AI-driven secure document management system that:
 ✅ Verify Authenticity of Documents  
 ✅ Store Documents in a Structured Format  
 
-
-
-📂 Folder Structure
-
-backend/
-│── src/
-│   ├── controllers/          # API Controllers (Handles HTTP requests)
-│   │   ├── authController.ts  # Authentication logic
-│   │   ├── documentController.ts  # Document handling logic
-│   │
-│   ├── services/             # Business Logic (Interacts with DB & processing)
-│   │   ├── authService.ts     # Handles authentication logic
-│   │   ├── documentService.ts # Handles document processing (OCR, storage)
-│   │
-│   ├── middlewares/          # Middleware (JWT, Multer, Error Handling)
-│   │   ├── authMiddleware.ts  # JWT Authentication Middleware
-│   │   ├── fileUploadMiddleware.ts  # Multer for handling file uploads
-│   │   ├── errorHandler.ts    # Centralized error handling
-│   │
-│   ├── models/               # MongoDB Models
-│   │   ├── User.ts            # User schema
-│   │   ├── Document.ts        # Document schema
-│   │
-│   ├── routes/               # Express API Routes
-│   │   ├── authRoutes.ts      # Authentication routes
-│   │   ├── documentRoutes.ts  # Document-related routes
-│   │
-│   ├── utils/                # Utility functions
-│   │   ├── customError.ts     # Custom error handler
-│   │   ├── responseMessages.ts  # Response messages constants
-│   │
-│   ├── config/               # Configuration files
-│   │   ├── db.ts              # MongoDB connection setup
-│   │
-│   ├── types/                # TypeScript Type Definitions
-│   │   ├── express.ts         # Custom request types (e.g., req.user)
-│   │
-│   ├── app.ts                # Main Express App (Initializes Express)
-│   ├── server.ts             # Starts the Backend Server
-│
-├── .gitignore                # Ignoring sensitive files
-├── package.json              # Project dependencies
-├── tsconfig.json             # TypeScript Config
-├── .env                      # Environment Variables
-
-
-
-
 📖 Setup Guide
-1️⃣ Clone the Repository
 
-git clone https://github.com/your-repo/document-verification-system.git
+1️⃣ Clone the Repository
+git clone https://github.com/anshulsenpai/transform-docs-api.git
 cd document-verification-system
 
-
 2️⃣ Install Dependencies
-
 npm install
 
-
 3️⃣ Create a `.env` File
-
 PORT=5050
 MONGO_URI=mongodb://localhost:27017/document_db
 JWT_SECRET=your_jwt_secret
 UPLOAD_DIR=uploads
 
-
 4️⃣ Start the Server
-
 npm start
 
 Your API will be running at `http://localhost:5050` 🚀
-
 
 🛠 API Endpoints
 🔐 Authentication
@@ -134,7 +79,6 @@ Your API will be running at `http://localhost:5050` 🚀
 | `/api/documents/upload` | `POST` | Upload document (PDF, Image) |
 | `/api/documents/verify` | `POST` | Verify document authenticity |
 
-
 🔍 How It Works
 1️⃣ User logs in and receives a JWT token.  
 2️⃣ Uploads a document (PDF/Image) using `/api/documents/upload`.  
@@ -144,21 +88,17 @@ Your API will be running at `http://localhost:5050` 🚀
    - ✅ Stores metadata and file securely
 4️⃣ User can verify the authenticity of a document using `/api/documents/verify`.  
 
-
 📌 Future Enhancements
 🔹 AI-Based Document Classification with ML Models.  
 🔹 Blockchain-based Document Verification.  
 🔹 Real-time Document Search & Retrieval.  
 
-
 💡 Contributors
 🚀 Developed by Anshul & Team 💻  
 Contributions & feedback are welcome!  
 
-
 📜 License
 📝 MIT License - Free to use and modify.
-
 
 🚀 Ready to Use?
 Start the server and test APIs using Postman or a Frontend Client!  
