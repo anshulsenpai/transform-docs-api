@@ -1,0 +1,60 @@
+# 💡 Ignore Node Modules
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 💡 Ignore Environment Variables & Secrets
+# .env
+.env.local
+.env.development
+.env.production
+.env.test
+
+# 💡 Ignore Compiled TypeScript Files
+dist/
+build/
+*.tsbuildinfo
+
+# 💡 Ignore Logs
+logs/
+*.log
+logfile.log
+debug.log
+error.log
+
+# 💡 Ignore IDE and Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# 💡 Ignore MongoDB Data (If using Local DB)
+data/
+*.lock
+.mongodump/
+
+# 💡 Ignore Multer Uploads and Processed Files
+uploads/
+temp/
+output/
+ocr-temp/
+
+# 💡 Ignore Cache Files
+.cache/
+.DS_Store
+Thumbs.db
+node_repl_history
+
+# 💡 Ignore Git Hooks & Debugging Tools
+.nyc_output/
+coverage/
+*.rej
+*.orig
+
+# 💡 Ignore Dependencies (if using pnpm or bun)
+pnpm-lock.yaml
+.pnpm-debug.log
+bun.lockb
