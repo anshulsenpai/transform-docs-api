@@ -17,34 +17,160 @@ const classifyDocument = async (
   const lowerCaseName = filename.toLowerCase();
   extractedText = extractedText.toLowerCase();
 
-  // Try to classify based on the filename first
-  if (lowerCaseName.includes("question") || lowerCaseName.includes("paper")) {
+  // 🔍 Try to classify based on the filename first
+  if (/question|paper|exam/i.test(lowerCaseName)) {
     return { category: "question-paper" };
   }
 
-  if (lowerCaseName.includes("notice")) {
+  if (/notice|announcement/i.test(lowerCaseName)) {
     return { category: "notice" };
   }
 
-  if (lowerCaseName.includes("notification")) {
+  if (/notification|circular/i.test(lowerCaseName)) {
     return { category: "notification" };
   }
 
-  // If no match from filename, use extracted text
+  if (/scorecard|marksheet/i.test(lowerCaseName)) {
+    return { category: "score-card" };
+  }
+
+  if (/certificate|diploma|degree/i.test(lowerCaseName)) {
+    return { category: "certificate" };
+  }
+
+  if (/invoice|bill|receipt/i.test(lowerCaseName)) {
+    return { category: "invoice" };
+  }
+
+  if (/id card|passport|aadhar|pan card/i.test(lowerCaseName)) {
+    return { category: "id-card" };
+  }
+
+  if (/prescription|medical record|lab report/i.test(lowerCaseName)) {
+    return { category: "medical-record" };
+  }
+
+  if (/bank statement|account summary/i.test(lowerCaseName)) {
+    return { category: "bank-statement" };
+  }
+
+  if (/report|business report|project report/i.test(lowerCaseName)) {
+    return { category: "report" };
+  }
+
+  if (/hall ticket|admit card/i.test(lowerCaseName)) {
+    return { category: "admit-card" };
+  }
+
+  if (/contract|agreement|nda/i.test(lowerCaseName)) {
+    return { category: "contract-agreement" };
+  }
+
+  if (/payslip|salary statement/i.test(lowerCaseName)) {
+    return { category: "salary-slip" };
+  }
+
+  // If no match from filename, try OCR extracted text
   console.log(
     "🔍 No match in filename. Using OCR extracted text for classification..."
   );
 
-  if (extractedText.includes("question paper")) {
+  if (
+    extractedText.includes("question paper") ||
+    extractedText.includes("exam paper")
+  ) {
     return { category: "question-paper" };
   }
 
-  if (extractedText.includes("notice")) {
+  if (
+    extractedText.includes("notice") ||
+    extractedText.includes("announcement")
+  ) {
     return { category: "notice" };
   }
 
-  if (extractedText.includes("notification")) {
+  if (
+    extractedText.includes("notification") ||
+    extractedText.includes("circular")
+  ) {
     return { category: "notification" };
+  }
+
+  if (
+    extractedText.includes("score card") ||
+    extractedText.includes("mark sheet")
+  ) {
+    return { category: "score-card" };
+  }
+
+  if (
+    extractedText.includes("certificate") ||
+    extractedText.includes("diploma") ||
+    extractedText.includes("degree")
+  ) {
+    return { category: "certificate" };
+  }
+
+  if (
+    extractedText.includes("invoice") ||
+    extractedText.includes("bill") ||
+    extractedText.includes("receipt")
+  ) {
+    return { category: "invoice" };
+  }
+
+  if (
+    extractedText.includes("id card") ||
+    extractedText.includes("passport") ||
+    extractedText.includes("aadhar") ||
+    extractedText.includes("pan card")
+  ) {
+    return { category: "id-card" };
+  }
+
+  if (
+    extractedText.includes("prescription") ||
+    extractedText.includes("medical record") ||
+    extractedText.includes("lab report")
+  ) {
+    return { category: "medical-record" };
+  }
+
+  if (
+    extractedText.includes("bank statement") ||
+    extractedText.includes("account summary")
+  ) {
+    return { category: "bank-statement" };
+  }
+
+  if (
+    extractedText.includes("report") ||
+    extractedText.includes("business report") ||
+    extractedText.includes("project report")
+  ) {
+    return { category: "report" };
+  }
+
+  if (
+    extractedText.includes("hall ticket") ||
+    extractedText.includes("admit card")
+  ) {
+    return { category: "admit-card" };
+  }
+
+  if (
+    extractedText.includes("contract") ||
+    extractedText.includes("agreement") ||
+    extractedText.includes("nda")
+  ) {
+    return { category: "contract-agreement" };
+  }
+
+  if (
+    extractedText.includes("payslip") ||
+    extractedText.includes("salary statement")
+  ) {
+    return { category: "salary-slip" };
   }
 
   throw new CustomError("Unable to classify document", 400);
@@ -123,7 +249,9 @@ const convertPdfToImage = async (pdfPath: string): Promise<string> => {
  */
 export const uploadDocumentService = async (
   file: Express.Multer.File,
-  userId: string
+  userId: string,
+  name: string,
+  description?: string
 ) => {
   try {
     console.log("📂 Upload request received");
@@ -168,11 +296,13 @@ export const uploadDocumentService = async (
 
     console.log(`📂 File saved at: ${finalFilePath}`);
 
-    // Save document metadata in MongoDB
+    // ✅ Save document metadata in MongoDB including `path`
     const newDocument = await Document.create({
       filename: finalFilename,
+      path: finalFilePath, // ✅ Store file path
+      name, // ✅ Store user-defined name
+      description, // ✅ Store optional description
       hash,
-      path: finalFilePath,
       category: classification.category,
       class: classification.class,
       subject: classification.subject,
@@ -190,6 +320,33 @@ export const uploadDocumentService = async (
     console.error("❌ Error in uploadDocumentService:", error);
     throw new CustomError(
       RESPONSE_MESSAGES.ERROR_UPLOADING + ": " + error.message,
+      500
+    );
+  }
+};
+
+/**
+ * Fetches all documents uploaded by a specific user.
+ */
+export const getUserDocumentService = async (
+  userId: string,
+  searchQuery?: string
+) => {
+  try {
+    let query: any = { uploadedBy: userId };
+
+    // 🔎 If search query is provided, search by name
+    if (searchQuery) {
+      query.name = { $regex: new RegExp(searchQuery, "i") }; // Case-insensitive search
+    }
+
+    return await Document.find(query).select(
+      "_id name filename hash uploadedBy createdAt"
+    );
+  } catch (error: any) {
+    console.error("❌ Error fetching user documents:", error);
+    throw new CustomError(
+      "Error fetching user documents: " + error.message,
       500
     );
   }
@@ -219,5 +376,50 @@ export const verifyDocumentService = async (fileBuffer: Buffer) => {
       RESPONSE_MESSAGES.ERROR_VERIFICATION + ": " + error.message,
       500
     );
+  }
+};
+
+/**
+ * Secure File Download Service
+ * Ensures users can only download their own files.
+ */
+
+export const downloadFileService = async (
+  fileId: string,
+  userId: string
+): Promise<string> => {
+  try {
+    // ✅ Find the document in the database
+    const document = await Document.findOne({
+      _id: fileId,
+      uploadedBy: userId,
+    });
+
+    if (!document) {
+      throw new CustomError(
+        "Unauthorized: You do not have access to this file",
+        403
+      );
+    }
+
+    // ✅ Construct the file path
+    const filePath = document.path;
+
+    if (!filePath) {
+      throw new CustomError("File path missing in document record", 500);
+    }
+
+    // ✅ Check if the file exists asynchronously
+    try {
+      await fs.access(filePath);
+    } catch (err) {
+      throw new CustomError("File not found", 404);
+    }
+
+    console.log(`📂 Downloading file: ${filePath}`);
+    return filePath; // ✅ Return file path to the controller
+  } catch (error) {
+    console.error("❌ Error in downloadFileService:", error);
+    throw new CustomError("Error retrieving file", 500);
   }
 };
