@@ -52,21 +52,45 @@ We provide an AI-driven secure document management system that:
 
 backend/
 │── src/
-│   ├── controllers/            # API Controllers
-│   ├── services/               # Business Logic
-│   ├── middlewares/            # JWT, File Upload & Error Handling
-│   ├── models/                 # MongoDB Models (User, Document)
-│   ├── routes/                 # Express API Routes
-│   ├── utils/                  # Helpers (Custom Errors, Response Messages)
-│   ├── config/                 # Database Connection
-│   ├── types/                  # TypeScript Type Definitions
-│   ├── app.ts                  # Main Express App
-│   ├── server.ts               # Starts the Backend Server
+│   ├── controllers/          # API Controllers (Handles HTTP requests)
+│   │   ├── authController.ts  # Authentication logic
+│   │   ├── documentController.ts  # Document handling logic
+│   │
+│   ├── services/             # Business Logic (Interacts with DB & processing)
+│   │   ├── authService.ts     # Handles authentication logic
+│   │   ├── documentService.ts # Handles document processing (OCR, storage)
+│   │
+│   ├── middlewares/          # Middleware (JWT, Multer, Error Handling)
+│   │   ├── authMiddleware.ts  # JWT Authentication Middleware
+│   │   ├── fileUploadMiddleware.ts  # Multer for handling file uploads
+│   │   ├── errorHandler.ts    # Centralized error handling
+│   │
+│   ├── models/               # MongoDB Models
+│   │   ├── User.ts            # User schema
+│   │   ├── Document.ts        # Document schema
+│   │
+│   ├── routes/               # Express API Routes
+│   │   ├── authRoutes.ts      # Authentication routes
+│   │   ├── documentRoutes.ts  # Document-related routes
+│   │
+│   ├── utils/                # Utility functions
+│   │   ├── customError.ts     # Custom error handler
+│   │   ├── responseMessages.ts  # Response messages constants
+│   │
+│   ├── config/               # Configuration files
+│   │   ├── db.ts              # MongoDB connection setup
+│   │
+│   ├── types/                # TypeScript Type Definitions
+│   │   ├── express.ts         # Custom request types (e.g., req.user)
+│   │
+│   ├── app.ts                # Main Express App (Initializes Express)
+│   ├── server.ts             # Starts the Backend Server
 │
-├── .gitignore                   # Ignoring sensitive files
-├── package.json                 # Project dependencies
-├── tsconfig.json                 # TypeScript Config
-├── .env                          # Environment Variables
+├── .gitignore                # Ignoring sensitive files
+├── package.json              # Project dependencies
+├── tsconfig.json             # TypeScript Config
+├── .env                      # Environment Variables
+
 
 
 
