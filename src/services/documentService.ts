@@ -195,6 +195,9 @@ const extractTextFromImage = async (filePath: string): Promise<string> => {
 
     // 🔹 Run OCR on Image
     const { data } = await Tesseract.recognize(filePath, "eng");
+    if (data.text) {
+      await fs.unlink(filePath);
+    }
     return data.text || "OCR Extraction Failed";
   } catch (error) {
     console.error("❌ Failed to extract text using OCR:", error);

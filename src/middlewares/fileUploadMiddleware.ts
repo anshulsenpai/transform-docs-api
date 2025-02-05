@@ -2,32 +2,31 @@ import multer from "multer";
 import path from "path";
 import { Request } from "express";
 import fs from "fs";
-import { AuthRequest } from "../types/express";
 import { CustomError } from "../utils/customError";
 
 // ✅ Allowed file extensions
 const allowedExtensions = [".pdf", ".jpg", ".jpeg", ".png"];
 
-// ✅ Define storage location dynamically
+// ✅ Define consistent storage directory
+const uploadDir = path.join(__dirname, "../../uploads");
+
+// ✅ Ensure uploads directory exists
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
 const storage = multer.diskStorage({
-  destination: (req: AuthRequest, file, cb) => {
-    const userId = req.user?.userId ?? "unknown"; // Use userId for organized storage
-    const uploadPath = path.join(__dirname, "../../uploads", userId);
-
-    // ✅ Create directory if not exists
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true });
-    }
-
-    cb(null, uploadPath);
+  destination: (req, file, cb) => {
+    cb(null, uploadDir); // ✅ Always save in the 'uploads' folder
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `${Date.now()}-${file.fieldname}${ext}`); // Rename file
+    const sanitizedFilename = file.originalname.replace(/\s+/g, "-");
+    cb(null, `${Date.now()}-${sanitizedFilename}${ext}`); // ✅ Prevents duplicate filenames
   },
 });
 
-// ✅ File Filter: Allow only specific file types
+// ✅ File Filter: Validate file type **before saving**
 const fileFilter = (req: Request, file: Express.Multer.File, cb: any) => {
   const ext = path.extname(file.originalname).toLowerCase();
   if (!allowedExtensions.includes(ext)) {
