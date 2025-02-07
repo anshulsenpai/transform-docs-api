@@ -4,6 +4,7 @@ interface IDocument extends Document {
   filename: string;
   name: string;
   description?: string;
+  category?: string;
   path: string; // ✅ Added missing path field
   hash: string;
   status: "Pending" | "Verified" | "Rejected";
@@ -17,6 +18,7 @@ const DocumentSchema = new Schema<IDocument>({
   hash: { type: String, required: true, unique: true },
   name: { type: String, required: true },
   description: { type: String },
+  category: { type: String },
   status: {
     type: String,
     enum: ["Pending", "Verified", "Rejected"],

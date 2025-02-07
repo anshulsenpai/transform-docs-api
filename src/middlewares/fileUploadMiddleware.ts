@@ -12,19 +12,21 @@ const uploadDir = path.join(__dirname, "../../uploads");
 
 // ✅ Ensure uploads directory exists
 if (!fs.existsSync(uploadDir)) {
+  console.log('created uploads dir')
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, uploadDir); // ✅ Always save in the 'uploads' folder
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    const sanitizedFilename = file.originalname.replace(/\s+/g, "-");
-    cb(null, `${Date.now()}-${sanitizedFilename}${ext}`); // ✅ Prevents duplicate filenames
+    const baseName = path.basename(file.originalname, ext).replace(/\s+/g, "-"); // ✅ Remove extra extensions
+    cb(null, `${Date.now()}-${baseName}${ext}`); // ✅ Ensures single extension
   },
 });
+
 
 // ✅ File Filter: Validate file type **before saving**
 const fileFilter = (req: Request, file: Express.Multer.File, cb: any) => {
