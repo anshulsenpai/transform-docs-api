@@ -11,7 +11,8 @@ const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 export const registerUserService = async (
   name: string,
   email: string,
-  password: string
+  password: string,
+  gender: string,
 ) => {
   const existingUser = await User.findOne({ email });
   if (existingUser) {
@@ -19,7 +20,7 @@ export const registerUserService = async (
   }
 
   const hashedPassword = await bcrypt.hash(password, 10);
-  const newUser = await User.create({ name, email, password: hashedPassword });
+  const newUser = await User.create({ name, email, password: hashedPassword, gender });
 
   return { message: "User registered successfully", user: newUser };
 };
