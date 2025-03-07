@@ -51,8 +51,16 @@ export const getUserDocumentsController = async (
     if (!userId) {
       throw new CustomError("Unauthorized", 401);
     }
-    const documents = await getUserDocumentService(userId);
-    successResponse(res, "User documents retrieved successfully!", documents);
+    const { searchQuery, category } = req.query;
+    const documents = await getUserDocumentService(
+      userId,
+      searchQuery as string,
+      category as string
+    );
+    successResponse(res, "User documents retrieved successfully!", {
+      documents,
+      totalDocs: documents.length
+    });
   } catch (error) {
     next(error);
   }

@@ -1,5 +1,7 @@
+import natural from "natural";
+import { TfIdf } from "natural";
 import crypto from "crypto";
-import fs from "fs/promises"; // ✅ Use async file operations
+import fs from "fs/promises";
 import path from "path";
 import poppler from "pdf-poppler";
 import Tesseract from "tesseract.js";
@@ -7,117 +9,426 @@ import Document from "../models/Document";
 import { RESPONSE_MESSAGES } from "../constants/responseMessages";
 import { CustomError } from "../utils/customError";
 
+// Category definitions with weighted keywords
+const CATEGORIES = {
+  "question-paper": {
+    keywords: [
+      "question",
+      "exam",
+      "paper",
+      "test",
+      "marks",
+      "answer",
+      "write",
+      "solve",
+      "time",
+      "allowed",
+    ],
+    keyPhrases: [
+      "total marks",
+      "time allowed",
+      "answer all questions",
+      "section a",
+      "multiple choice",
+    ],
+  },
+  notice: {
+    keywords: [
+      "notice",
+      "announcement",
+      "attention",
+      "inform",
+      "regarding",
+      "hereby",
+      "issued",
+    ],
+    keyPhrases: [
+      "public notice",
+      "all concerned",
+      "take notice that",
+      "please note",
+      "important notice",
+    ],
+  },
+  notification: {
+    keywords: [
+      "notification",
+      "circular",
+      "official",
+      "inform",
+      "government",
+      "authority",
+      "directive",
+    ],
+    keyPhrases: [
+      "government notification",
+      "official notification",
+      "it is notified",
+      "circular no",
+    ],
+  },
+  "score-card": {
+    keywords: [
+      "scorecard",
+      "marksheet",
+      "result",
+      "grade",
+      "score",
+      "marks",
+      "percentage",
+      "cgpa",
+      "semester",
+    ],
+    keyPhrases: [
+      "marks obtained",
+      "total score",
+      "grade sheet",
+      "examination result",
+      "pass percentage",
+    ],
+  },
+  certificate: {
+    keywords: [
+      "certificate",
+      "certify",
+      "achievement",
+      "diploma",
+      "degree",
+      "awarded",
+      "completion",
+    ],
+    keyPhrases: [
+      "this is to certify",
+      "has been awarded",
+      "successfully completed",
+      "date of issue",
+    ],
+  },
+  invoice: {
+    keywords: [
+      "invoice",
+      "bill",
+      "payment",
+      "amount",
+      "total",
+      "price",
+      "tax",
+      "due",
+      "paid",
+      "item",
+    ],
+    keyPhrases: [
+      "invoice no",
+      "billing address",
+      "payment due",
+      "total amount",
+      "tax invoice",
+    ],
+  },
+  "id-card": {
+    keywords: [
+      "id",
+      "identity",
+      "card",
+      "passport",
+      "aadhar",
+      "pan",
+      "identification",
+      "number",
+      "photo",
+    ],
+    keyPhrases: [
+      "identity card",
+      "date of birth",
+      "identification number",
+      "valid until",
+      "authorized signature",
+    ],
+  },
+  "medical-record": {
+    keywords: [
+      "medical",
+      "surgical",
+      "pathalogy",
+      "lab",
+      "laboratory",
+      "prescription",
+      "doctor",
+      "patient",
+      "medicine",
+      "treatment",
+      "diagnosis",
+      "hospital",
+    ],
+    keyPhrases: [
+      "patient name",
+      "doctor's prescription",
+      "medical history",
+      "dosage",
+      "follow up",
+    ],
+  },
+  "bank-statement": {
+    keywords: [
+      "bank",
+      "statement",
+      "account",
+      "balance",
+      "transaction",
+      "debit",
+      "credit",
+      "deposit",
+      "withdrawal",
+    ],
+    keyPhrases: [
+      "account statement",
+      "opening balance",
+      "closing balance",
+      "transaction date",
+      "statement period",
+    ],
+  },
+  report: {
+    keywords: [
+      "report",
+      "analysis",
+      "findings",
+      "summary",
+      "conclusion",
+      "recommendation",
+      "research",
+    ],
+    keyPhrases: [
+      "executive summary",
+      "findings and analysis",
+      "conclusion and recommendations",
+      "reported by",
+    ],
+  },
+  "admit-card": {
+    keywords: [
+      "admit",
+      "card",
+      "hall",
+      "ticket",
+      "examination",
+      "venue",
+      "candidate",
+      "roll",
+      "center",
+    ],
+    keyPhrases: [
+      "hall ticket",
+      "examination center",
+      "admit card",
+      "roll number",
+      "reporting time",
+    ],
+  },
+  "contract-agreement": {
+    keywords: [
+      "contract",
+      "agreement",
+      "parties",
+      "terms",
+      "conditions",
+      "clause",
+      "signed",
+      "legal",
+      "binding",
+    ],
+    keyPhrases: [
+      "terms and conditions",
+      "agreement between",
+      "party of the first part",
+      "hereinafter referred",
+    ],
+  },
+  "salary-slip": {
+    keywords: [
+      "salary",
+      "payslip",
+      "pay",
+      "earnings",
+      "deductions",
+      "net",
+      "gross",
+      "employee",
+      "month",
+    ],
+    keyPhrases: [
+      "salary slip",
+      "pay period",
+      "net pay",
+      "gross earnings",
+      "employee id",
+    ],
+  },
+};
+
+// Initialize tokenizer
+const tokenizer = new natural.WordTokenizer();
+
 /**
- * Determines document category, class, and subject based on **filename and extracted text**.
+ * Determines document category using advanced NLP techniques
+ * while keeping the existing structure
  */
 const classifyDocument = async (
   filename: string,
   extractedText: string
-): Promise<{ category: string; class?: string; subject?: string }> => {
+): Promise<{ category: string; confidence: number }> => {
+
   const lowerCaseName = filename.toLowerCase();
-  extractedText = extractedText.toLowerCase();
+  const lowerCaseText = extractedText.toLowerCase();
 
-  if (/question|paper|exam/i.test(lowerCaseName))
-    return { category: "question-paper" };
-  if (/notice|announcement/i.test(lowerCaseName)) return { category: "notice" };
-  if (/notification|circular/i.test(lowerCaseName))
-    return { category: "notification" };
-  if (/scorecard|marksheet/i.test(lowerCaseName))
-    return { category: "score-card" };
-  if (/certificate|diploma|degree/i.test(lowerCaseName))
-    return { category: "certificate" };
-  if (/invoice|bill|receipt/i.test(lowerCaseName))
-    return { category: "invoice" };
-  if (/id card|passport|aadhar|pan card/i.test(lowerCaseName))
-    return { category: "id-card" };
-  if (/prescription|medical record|lab report/i.test(lowerCaseName))
-    return { category: "medical-record" };
-  if (/bank statement|account summary/i.test(lowerCaseName))
-    return { category: "bank-statement" };
-  if (/report|business report|project report/i.test(lowerCaseName))
-    return { category: "report" };
-  if (/hall ticket|admit card/i.test(lowerCaseName))
-    return { category: "admit-card" };
-  if (/contract|agreement|nda/i.test(lowerCaseName))
-    return { category: "contract-agreement" };
-  if (/payslip|salary statement/i.test(lowerCaseName))
-    return { category: "salary-slip" };
+  const filenameCategory = getFilenameCategory(lowerCaseName);
+  if (filenameCategory) {
+    return { category: filenameCategory, confidence: 0.8 };
+  }
 
-  console.log("⚠️ No match found in filename, checking extracted text...");
+  const textCategory = getTextCategory(lowerCaseText);
+  if (textCategory) {
+    return { category: textCategory, confidence: 0.6 };
+  }
+  const tfidf = new TfIdf();
 
-  // ✅ If filename didn't match, try classifying based on extracted text
-  if (
-    extractedText.includes("exam paper") ||
-    extractedText.includes("test questions")
-  )
-    return { category: "question-paper" };
-  if (
-    extractedText.includes("important notice") ||
-    extractedText.includes("public announcement")
-  )
-    return { category: "notice" };
-  if (
-    extractedText.includes("government notification") ||
-    extractedText.includes("official circular")
-  )
-    return { category: "notification" };
-  if (
-    extractedText.includes("academic transcript") ||
-    extractedText.includes("marksheet")
-  )
-    return { category: "score-card" };
-  if (
-    extractedText.includes("certificate of completion") ||
-    extractedText.includes("degree awarded")
-  )
-    return { category: "certificate" };
-  if (
-    extractedText.includes("invoice number") ||
-    extractedText.includes("total due")
-  )
-    return { category: "invoice" };
-  if (
-    extractedText.includes("identity card") ||
-    extractedText.includes("passport number")
-  )
-    return { category: "id-card" };
-  if (
-    extractedText.includes("medical prescription") ||
-    extractedText.includes("patient record")
-  )
-    return { category: "medical-record" };
-  if (
-    extractedText.includes("account balance") ||
-    extractedText.includes("bank statement")
-  )
-    return { category: "bank-statement" };
-  if (
-    extractedText.includes("business report") ||
-    extractedText.includes("financial summary")
-  )
-    return { category: "report" };
-  if (
-    extractedText.includes("admit card") ||
-    extractedText.includes("hall ticket")
-  )
-    return { category: "admit-card" };
-  if (
-    extractedText.includes("contract terms") ||
-    extractedText.includes("non-disclosure agreement")
-  )
-    return { category: "contract-agreement" };
-  if (
-    extractedText.includes("salary slip") ||
-    extractedText.includes("monthly pay statement")
-  )
-    return { category: "salary-slip" };
+  const tokens = tokenizer.tokenize(lowerCaseText);
 
-  console.log("⚠️ No match found, marking document as 'unclassified'");
-  return { category: "unclassified" }; // ✅ Instead of throwing an error
+  const filteredTokens = tokens.filter((token: any) => token.length > 2);
+
+  tfidf.addDocument(filteredTokens);
+
+  // Calculate scores for each category
+  const scores = Object.entries(CATEGORIES).map(([category, features]) => {
+    let score = 0;
+
+    // Check for keywords in tokenized text
+    features.keywords.forEach((keyword) => {
+      // Use TF-IDF to get importance score of this keyword
+      const keywordScore = tfidf.tfidf(keyword, 0);
+      score += keywordScore;
+
+      // Add bonus points if keyword appears in tokens
+      if (filteredTokens.includes(keyword)) {
+        score += 3;
+      }
+    });
+
+    // Check for key phrases (strong indicators)
+    features.keyPhrases.forEach((phrase) => {
+      if (lowerCaseText.includes(phrase.toLowerCase())) {
+        score += 10;
+
+        // Tokenize the phrase and check for token matches
+        const phraseTokens = tokenizer.tokenize(phrase.toLowerCase());
+        const matchingTokens = phraseTokens.filter(
+          (token: any) => filteredTokens.includes(token) && token.length > 3
+        );
+
+        // If multiple tokens from the phrase match, it's a stronger signal
+        if (matchingTokens.length > 1) {
+          score += matchingTokens.length * 2;
+        }
+      }
+    });
+
+    return { category, score };
+  });
+
+  // Sort by score and get the highest
+  scores.sort((a, b) => b.score - a.score);
+
+  // If top score is too low, mark as unclassified
+  if (scores.length === 0 || scores[0].score < 5) {
+    console.log("⚠️ Low confidence classification, marking as unclassified");
+    return { category: "unclassified", confidence: 0 };
+  }
+
+  // Calculate confidence (normalize the score)
+  const topScore = scores[0].score;
+  const confidence = Math.min(topScore / 50, 1);
+
+  return {
+    category: scores[0].category,
+    confidence,
+  };
 };
+
+// Helper functions to maintain compatibility with existing code
+function getFilenameCategory(filename: any) {
+  if (/question|paper|exam/i.test(filename)) return "question-paper";
+  if (/notice|announcement/i.test(filename)) return "notice";
+  if (/notification|circular/i.test(filename)) return "notification";
+  if (/scorecard|marksheet/i.test(filename)) return "score-card";
+  if (
+    /certificate|diploma|degree|medical-cert|medical\s*certificate/i.test(
+      filename
+    )
+  )
+    return "certificate";
+  if (/invoice|bill|receipt/i.test(filename)) return "invoice";
+  if (/id card|passport|aadhar|pan card/i.test(filename)) return "id-card";
+  if (/prescription|medical record|lab report/i.test(filename))
+    return "medical-record";
+  if (/bank\s*statement|account\s*summary/i.test(filename))
+    return "bank-statement";
+  if (/report|business report|project report/i.test(filename)) return "report";
+  if (/hall ticket|admit card/i.test(filename)) return "admit-card";
+  if (/contract|agreement|nda/i.test(filename)) return "contract-agreement";
+  if (/payslip|salary statement/i.test(filename)) return "salary-slip";
+  return null;
+}
+
+function getTextCategory(text: any) {
+  if (text.includes("exam paper") || text.includes("test questions"))
+    return "question-paper";
+  if (text.includes("important notice") || text.includes("public announcement"))
+    return "notice";
+  if (
+    text.includes("government notification") ||
+    text.includes("official circular")
+  )
+    return "notification";
+  if (
+    text.includes("academic transcript") ||
+    text.includes("statement of marks") ||
+    text.includes("marksheet")
+  )
+    return "score-card";
+  if (
+    text.includes("certificate of completion") ||
+    text.includes("degree awarded")
+  )
+    return "certificate";
+  if (text.includes("invoice number") || text.includes("total due"))
+    return "invoice";
+  if (text.includes("identity card") || text.includes("passport number"))
+    return "id-card";
+  if (text.includes("medical prescription") || text.includes("patient record"))
+    return "medical-record";
+  if (
+    text.includes("account balance") ||
+    text.includes("account summary") ||
+    text.includes("bank statement")
+  )
+    return "bank-statement";
+  if (text.includes("business report") || text.includes("financial summary"))
+    return "report";
+  if (text.includes("admit card") || text.includes("hall ticket"))
+    return "admit-card";
+  if (
+    text.includes("contract terms") ||
+    text.includes("non-disclosure agreement")
+  )
+    return "contract-agreement";
+  if (text.includes("salary slip") || text.includes("monthly pay statement"))
+    return "salary-slip";
+  return null;
+}
 
 /**
  * Extracts text from an image or scanned document using Tesseract.js.
+ * Keeping the existing implementation
  */
 const extractTextFromImage = async (filePath: string): Promise<string> => {
   try {
@@ -135,7 +446,14 @@ const extractTextFromImage = async (filePath: string): Promise<string> => {
     }
 
     // 🔹 Run OCR on Image
-    const { data } = await Tesseract.recognize(filePath, "eng");
+    const { data } = await Tesseract.recognize(filePath, "eng", {
+      logger: (m) => {
+        if (m.status === "recognizing text") {
+          console.log(`OCR Progress: ${Math.round(m.progress * 100)}%`);
+        }
+      },
+    });
+
     if (isTempFile) {
       await fs.unlink(filePath);
       console.log(`🗑️ Deleted temporary image: ${filePath}`);
@@ -149,6 +467,7 @@ const extractTextFromImage = async (filePath: string): Promise<string> => {
 
 /**
  * Converts a PDF file to an image (PNG) using pdf-poppler.
+ * Keeping the existing implementation
  */
 const convertPdfToImage = async (pdfPath: string): Promise<string> => {
   try {
@@ -191,6 +510,7 @@ const convertPdfToImage = async (pdfPath: string): Promise<string> => {
 
 /**
  * Uploads a document: Stores in the filesystem, saves metadata in MongoDB, and extracts text.
+ * Modified to include confidence score but keeping core functionality the same
  */
 export const uploadDocumentService = async (
   file: Express.Multer.File,
@@ -214,15 +534,20 @@ export const uploadDocumentService = async (
     // Extract text from file (OCR)
     let extractedText = await extractTextFromImage(file.path);
 
-    console.log("🔍 Extracted text:", extractedText.substring(0, 100)); // ✅ Log first 100 chars only
+    console.log("🔍 Extracted text:", extractedText.substring(0, 300)); // ✅ Log first 300 chars only
 
-    // Classify the document based on filename AND extracted text
-    const classification = await classifyDocument(
+    // Classify the document based on filename AND extracted text with confidence score
+    const { category, confidence } = await classifyDocument(
       file.originalname,
       extractedText
     );
 
-    const category = classification.category || "unclassified";
+    console.log(
+      `📄 Document classified as: ${category} (confidence: ${(
+        confidence * 100
+      ).toFixed(2)}%)`
+    );
+
     // Ensure directory exists
     const uploadDir = path.join(
       __dirname,
@@ -247,14 +572,16 @@ export const uploadDocumentService = async (
 
     console.log(`📂 File saved at: ${finalFilePath}`);
 
-    // ✅ Save document metadata in MongoDB including `path`
+    // Save document metadata in MongoDB - assume Document model has been updated to include confidence
     const newDocument = await Document.create({
       name, // ✅ Store user-defined name
       description, // ✅ Store optional description
       filename: finalFilename,
       path: finalFilePath, // ✅ Store file path
       hash,
-      category: classification.category,
+      category,
+      classification_confidence: confidence, // Add confidence score
+      extractedText: extractedText.substring(0, 1000), // Store a sample for potential retraining
       uploadedBy: userId,
     });
 
@@ -273,24 +600,28 @@ export const uploadDocumentService = async (
   }
 };
 
-/**
- * Fetches all documents uploaded by a specific user.
- */
+// Retaining the existing service functions
 export const getUserDocumentService = async (
   userId: string,
-  searchQuery?: string
+  searchQuery?: string,
+  category?: string
 ) => {
   try {
     let query: any = { uploadedBy: userId };
 
-    // 🔎 If search query is provided, search by name
     if (searchQuery) {
-      query.name = { $regex: new RegExp(searchQuery, "i") }; // Case-insensitive search
+      query.name = { $regex: new RegExp(searchQuery, "i") };
     }
 
-    return await Document.find(query).select(
-      "_id name filename hash category uploadedBy createdAt"
-    );
+    if (category) {
+      query.category = category;
+    }
+
+    return await Document.find(query)
+      .select(
+        "_id name filename hash category classification_confidence uploadedBy createdAt"
+      )
+      .sort({ createdAt: -1 });
   } catch (error: any) {
     console.error("❌ Error fetching user documents:", error);
     throw new CustomError(
@@ -300,17 +631,13 @@ export const getUserDocumentService = async (
   }
 };
 
-/**
- * Verifies if a document is authentic by checking its hash.
- */
 export const verifyDocumentService = async (fileHash: string) => {
-  // ✅ Accept hash directly
   try {
     console.log("🔍 Verifying document...");
 
     const document = await Document.findOne({ hash: fileHash }).select(
       "_id filename hash name description category status uploadedBy createdAt"
-    ); // ✅ Use fileHash directly
+    );
 
     if (!document) {
       console.log("❌ Document not found.");
@@ -326,11 +653,6 @@ export const verifyDocumentService = async (fileHash: string) => {
     );
   }
 };
-
-/**
- * Secure File Download Service
- * Ensures users can only download their own files.
- */
 
 export const downloadFileService = async (
   fileId: string,
