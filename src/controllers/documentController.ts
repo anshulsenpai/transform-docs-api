@@ -1,13 +1,15 @@
 import { Response, NextFunction } from "express";
 import {
   downloadFileService,
+  getAdminStatsService,
+  getAllDocumentService,
   getUserDocumentService,
   uploadDocumentService,
-  verifyDocumentService,
 } from "../services/documentService";
 import { successResponse } from "../utils/httpResponse";
 import { AuthRequest } from "../types/express";
 import { CustomError } from "../utils/customError";
+import Document from "../models/Document";
 
 export const uploadDocument = async (
   req: AuthRequest,
@@ -59,26 +61,8 @@ export const getUserDocumentsController = async (
     );
     successResponse(res, "User documents retrieved successfully!", {
       documents,
-      totalDocs: documents.length
+      totalDocs: documents.length,
     });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const verifyDocument = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    const { fileHash } = req.body;
-    if (!fileHash) {
-      throw new CustomError("fileHash is required for verification", 400);
-    }
-
-    const result = await verifyDocumentService(fileHash);
-    successResponse(res, result.message, result.document);
   } catch (error) {
     next(error);
   }
@@ -110,6 +94,86 @@ export const downloadFileController = async (
         console.error("❌ Error in file download:", err);
         return next(new CustomError("Error downloading file", 500));
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const dashboardStats = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    try {
+      const stats = await getAdminStatsService();
+      successResponse(res, "Admin statistics retrieved successfully", stats);
+    } catch (err) {
+      next(err);
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateFraudStatusController = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { documentId } = req.params;
+    const { fraudStatus, fraudReason } = req.body;
+
+    // Validate input
+    const validStatuses = ["pending", "suspicious", "verified", "rejected"];
+    if (!validStatuses.includes(fraudStatus)) {
+      throw new CustomError(
+        `Invalid fraud status. Allowed: ${validStatuses.join(", ")}`,
+        400
+      );
+    }
+
+    // Update document
+    const updatedDoc = await Document.findByIdAndUpdate(
+      documentId,
+      {
+        fraudStatus,
+        fraudReason: fraudReason || undefined,
+        verifiedBy: req.user?.userId, // From decoded JWT (admin)
+        verifiedAt: new Date(),
+      },
+      { new: true }
+    );
+
+    if (!updatedDoc) {
+      throw new CustomError("Document not found", 404);
+    }
+
+    successResponse(res, "Fraud status updated successfully", {
+      document: updatedDoc,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAllDocumentsController = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+
+    const { searchQuery, category } = req.query;
+    const documents = await getAllDocumentService(
+      searchQuery as string,
+      category as string
+    );
+    successResponse(res, "User documents retrieved successfully!", {
+      documents,
+      totalDocs: documents.length,
     });
   } catch (error) {
     next(error);

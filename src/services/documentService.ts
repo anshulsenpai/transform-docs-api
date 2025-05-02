@@ -9,6 +9,7 @@ import Document from "../models/Document";
 import { RESPONSE_MESSAGES } from "../constants/responseMessages";
 import { CustomError } from "../utils/customError";
 import { CATEGORIES } from "../constants/categories";
+import { runFraudChecks } from "../utils/fraudDetection";
 
 const tokenizer = new natural.WordTokenizer();
 
@@ -16,7 +17,6 @@ const classifyDocument = async (
   filename: string,
   extractedText: string
 ): Promise<{ category: string; confidence: number }> => {
-
   const lowerCaseName = filename.toLowerCase();
   const lowerCaseText = extractedText.toLowerCase();
 
@@ -84,7 +84,8 @@ const classifyDocument = async (
 
 function getFilenameCategory(filename: any) {
   if (/question|paper|exam/i.test(filename)) return "question-paper";
-  if (/notice|competetion|feedback|form|announcement/i.test(filename)) return "notice";
+  if (/notice|competetion|feedback|form|announcement/i.test(filename))
+    return "notice";
   if (/notification|circular/i.test(filename)) return "notification";
   if (/scorecard|marksheet/i.test(filename)) return "score-card";
   if (
@@ -269,6 +270,12 @@ export const uploadDocumentService = async (
       extractedText
     );
 
+    const { status: fraudStatus, reason: fraudReason } = await runFraudChecks(
+      extractedText,
+      category,
+      confidence
+    );
+
     console.log(
       `📄 Document classified as: ${category} (confidence: ${(
         confidence * 100
@@ -301,15 +308,17 @@ export const uploadDocumentService = async (
 
     // Save document metadata in MongoDB - assume Document model has been updated to include confidence
     const newDocument = await Document.create({
-      name, // ✅ Store user-defined name
-      description, // ✅ Store optional description
+      name,
+      description,
       filename: finalFilename,
-      path: finalFilePath, // ✅ Store file path
+      path: finalFilePath,
       hash,
       category,
-      classification_confidence: confidence, // Add confidence score
-      extractedText: extractedText.substring(0, 1000), // Store a sample for potential retraining
+      classification_confidence: confidence,
+      extractedText: extractedText.substring(0, 1000),
       uploadedBy: userId,
+      fraudStatus,
+      fraudReason,
     });
 
     console.log("✅ Document saved");
@@ -346,36 +355,13 @@ export const getUserDocumentService = async (
 
     return await Document.find(query)
       .select(
-        "_id name filename hash category classification_confidence uploadedBy createdAt"
+        "_id name filename hash category classification_confidence fraudStatus fraudReason uploadedBy createdAt"
       )
       .sort({ createdAt: -1 });
   } catch (error: any) {
     console.error("❌ Error fetching user documents:", error);
     throw new CustomError(
       "Error fetching user documents: " + error.message,
-      500
-    );
-  }
-};
-
-export const verifyDocumentService = async (fileHash: string) => {
-  try {
-    console.log("🔍 Verifying document...");
-
-    const document = await Document.findOne({ hash: fileHash }).select(
-      "_id filename hash name description category status uploadedBy createdAt"
-    );
-
-    if (!document) {
-      console.log("❌ Document not found.");
-      throw new CustomError(RESPONSE_MESSAGES.DOCUMENT_NOT_FOUND, 404);
-    }
-    console.log("✅ Document Verified");
-    return { message: RESPONSE_MESSAGES.DOCUMENT_AUTHENTIC, document };
-  } catch (error: any) {
-    console.error("❌ Error in verifyDocumentService:", error);
-    throw new CustomError(
-      RESPONSE_MESSAGES.ERROR_VERIFICATION + ": " + error.message,
       500
     );
   }
@@ -418,5 +404,54 @@ export const downloadFileService = async (
   } catch (error) {
     console.error("❌ Error in downloadFileService:", error);
     throw new CustomError("Error retrieving file", 500);
+  }
+};
+
+export interface AdminStats {
+  total: number;
+  verified: number;
+  pending: number;
+  suspicious: number;
+  rejected: number;
+}
+export const getAdminStatsService = async (): Promise<AdminStats> => {
+  // Count everything in one go:
+  const [total, verified, pending, suspicious, rejected] = await Promise.all([
+    Document.countDocuments({}),
+    Document.countDocuments({ fraudStatus: "verified" }),
+    Document.countDocuments({ fraudStatus: "pending" }),
+    Document.countDocuments({ fraudStatus: "suspicious" }),
+    Document.countDocuments({ fraudStatus: "rejected" }),
+  ]);
+
+  return { total, verified, pending, suspicious, rejected };
+};
+
+export const getAllDocumentService = async (
+  searchQuery?: string,
+  category?: string
+) => {
+  try {
+    let query: any = {};
+
+    if (searchQuery) {
+      query.name = { $regex: new RegExp(searchQuery, "i") };
+    }
+
+    if (category) {
+      query.category = category;
+    }
+
+    return await Document.find(query)
+      .select(
+        "_id name filename hash category classification_confidence fraudStatus fraudReason uploadedBy createdAt"
+      )
+      .sort({ createdAt: -1 });
+  } catch (error: any) {
+    console.error("❌ Error fetching user documents:", error);
+    throw new CustomError(
+      "Error fetching user documents: " + error.message,
+      500
+    );
   }
 };
