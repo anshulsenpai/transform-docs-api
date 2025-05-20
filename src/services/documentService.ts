@@ -382,19 +382,30 @@ export const downloadFileService = async (
   userId: string
 ): Promise<string> => {
   try {
-    // First, check if the user uploaded the document
-    let document = await Document.findOne({
-      _id: fileId,
-      uploadedBy: userId,
-    });
+    // First, check if the user is an admin - admins can access any document
+    const user = await User.findById(userId);
+    const isAdmin = user && user.role === "admin";
 
-    // If not found as owner, check if the document is shared with this user
-    if (!document) {
+    // If the user is an admin, just get the document directly
+    let document = null;
+    if (isAdmin) {
+      document = await Document.findById(fileId);
+    } else {
+      // For regular users, check ownership or sharing
+      // First, check if the user uploaded the document
       document = await Document.findOne({
         _id: fileId,
-        isShared: true,
-        sharedWith: userId,
+        uploadedBy: userId,
       });
+
+      // If not found as owner, check if the document is shared with this user
+      if (!document) {
+        document = await Document.findOne({
+          _id: fileId,
+          isShared: true,
+          sharedWith: userId,
+        });
+      }
     }
 
     // If still not found, user has no access
@@ -417,6 +428,20 @@ export const downloadFileService = async (
       await fs.access(filePath);
     } catch (err) {
       throw new CustomError("File not found", 404);
+    }
+
+    // Record this download in the activity log
+    try {
+      await new Activity({
+        type: "download",
+        user: userId,
+        document: fileId,
+        status: "downloaded",
+        details: isAdmin ? "Downloaded by admin" : "Downloaded by user",
+      }).save();
+    } catch (activityError) {
+      // Don't fail the download if activity logging fails
+      console.error("❌ Error recording download activity:", activityError);
     }
 
     console.log(`📂 Downloading file: ${filePath}`);
