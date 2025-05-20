@@ -5,6 +5,7 @@ import morgan from "morgan";
 import dotenv from "dotenv";
 import connectDB from "./config/db";
 import documentRoutes from "./routes/documentRoutes";
+import userRoutes from "./routes/userRoutes";
 import authRoutes from "./routes/authRoutes";
 import { authenticateJWT } from "./middlewares/authMiddleware";
 import { errorHandler } from "./middlewares/errorHandler";
@@ -41,6 +42,7 @@ app.use((req, res, next) => {
 // ✅ API Routes
 app.use("/api/auth", authRoutes); // Public Routes: Register, Login, Forgot Password
 app.use("/api/documents", documentRoutes); // Protected Routes: Requires JWT
+app.use("/api/user", userRoutes); // Protected Routes: Requires JWT
 
 // ✅ Global Error Handler
 app.use(errorHandler);

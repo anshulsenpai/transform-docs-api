@@ -5,10 +5,14 @@ import fs from "fs/promises";
 import path from "path";
 import poppler from "pdf-poppler";
 import Tesseract from "tesseract.js";
-import Document from "../models/Document";
+import Document, { IDocument } from "../models/Document";
 import { RESPONSE_MESSAGES } from "../constants/responseMessages";
 import { CustomError } from "../utils/customError";
 import { CATEGORIES } from "../constants/categories";
+import { runFraudChecks } from "../utils/fraudDetection";
+import User from "../models/User";
+import mongoose from "mongoose";
+import Activity from "../models/Activity";
 
 const tokenizer = new natural.WordTokenizer();
 
@@ -16,7 +20,6 @@ const classifyDocument = async (
   filename: string,
   extractedText: string
 ): Promise<{ category: string; confidence: number }> => {
-
   const lowerCaseName = filename.toLowerCase();
   const lowerCaseText = extractedText.toLowerCase();
 
@@ -84,7 +87,8 @@ const classifyDocument = async (
 
 function getFilenameCategory(filename: any) {
   if (/question|paper|exam/i.test(filename)) return "question-paper";
-  if (/notice|competetion|feedback|form|announcement/i.test(filename)) return "notice";
+  if (/notice|competetion|feedback|form|announcement/i.test(filename))
+    return "notice";
   if (/notification|circular/i.test(filename)) return "notification";
   if (/scorecard|marksheet/i.test(filename)) return "score-card";
   if (
@@ -269,6 +273,12 @@ export const uploadDocumentService = async (
       extractedText
     );
 
+    const { status: fraudStatus, reason: fraudReason } = await runFraudChecks(
+      extractedText,
+      category,
+      confidence
+    );
+
     console.log(
       `📄 Document classified as: ${category} (confidence: ${(
         confidence * 100
@@ -301,18 +311,27 @@ export const uploadDocumentService = async (
 
     // Save document metadata in MongoDB - assume Document model has been updated to include confidence
     const newDocument = await Document.create({
-      name, // ✅ Store user-defined name
-      description, // ✅ Store optional description
+      name,
+      description,
       filename: finalFilename,
-      path: finalFilePath, // ✅ Store file path
+      path: finalFilePath,
       hash,
       category,
-      classification_confidence: confidence, // Add confidence score
-      extractedText: extractedText.substring(0, 1000), // Store a sample for potential retraining
+      classification_confidence: confidence,
+      extractedText: extractedText.substring(0, 1000),
       uploadedBy: userId,
+      fraudStatus,
+      fraudReason,
     });
 
     console.log("✅ Document saved");
+
+    await new Activity({
+      type: "upload",
+      user: userId,
+      document: newDocument._id,
+      status: "pending",
+    }).save();
 
     return {
       message: RESPONSE_MESSAGES.DOCUMENT_UPLOADED,
@@ -346,7 +365,7 @@ export const getUserDocumentService = async (
 
     return await Document.find(query)
       .select(
-        "_id name filename hash category classification_confidence uploadedBy createdAt"
+        "_id name filename hash category classification_confidence fraudStatus fraudReason uploadedBy createdAt"
       )
       .sort({ createdAt: -1 });
   } catch (error: any) {
@@ -358,40 +377,38 @@ export const getUserDocumentService = async (
   }
 };
 
-export const verifyDocumentService = async (fileHash: string) => {
-  try {
-    console.log("🔍 Verifying document...");
-
-    const document = await Document.findOne({ hash: fileHash }).select(
-      "_id filename hash name description category status uploadedBy createdAt"
-    );
-
-    if (!document) {
-      console.log("❌ Document not found.");
-      throw new CustomError(RESPONSE_MESSAGES.DOCUMENT_NOT_FOUND, 404);
-    }
-    console.log("✅ Document Verified");
-    return { message: RESPONSE_MESSAGES.DOCUMENT_AUTHENTIC, document };
-  } catch (error: any) {
-    console.error("❌ Error in verifyDocumentService:", error);
-    throw new CustomError(
-      RESPONSE_MESSAGES.ERROR_VERIFICATION + ": " + error.message,
-      500
-    );
-  }
-};
-
 export const downloadFileService = async (
   fileId: string,
   userId: string
 ): Promise<string> => {
   try {
-    // ✅ Find the document in the database
-    const document = await Document.findOne({
-      _id: fileId,
-      uploadedBy: userId,
-    });
+    // First, check if the user is an admin - admins can access any document
+    const user = await User.findById(userId);
+    const isAdmin = user && user.role === "admin";
 
+    // If the user is an admin, just get the document directly
+    let document = null;
+    if (isAdmin) {
+      document = await Document.findById(fileId);
+    } else {
+      // For regular users, check ownership or sharing
+      // First, check if the user uploaded the document
+      document = await Document.findOne({
+        _id: fileId,
+        uploadedBy: userId,
+      });
+
+      // If not found as owner, check if the document is shared with this user
+      if (!document) {
+        document = await Document.findOne({
+          _id: fileId,
+          isShared: true,
+          sharedWith: userId,
+        });
+      }
+    }
+
+    // If still not found, user has no access
     if (!document) {
       throw new CustomError(
         "Forbidden: You do not have access to this file",
@@ -413,10 +430,184 @@ export const downloadFileService = async (
       throw new CustomError("File not found", 404);
     }
 
+    // Record this download in the activity log
+    try {
+      await new Activity({
+        type: "download",
+        user: userId,
+        document: fileId,
+        status: "downloaded",
+        details: isAdmin ? "Downloaded by admin" : "Downloaded by user",
+      }).save();
+    } catch (activityError) {
+      // Don't fail the download if activity logging fails
+      console.error("❌ Error recording download activity:", activityError);
+    }
+
     console.log(`📂 Downloading file: ${filePath}`);
     return filePath; // ✅ Return file path to the controller
   } catch (error) {
     console.error("❌ Error in downloadFileService:", error);
     throw new CustomError("Error retrieving file", 500);
+  }
+};
+
+export interface AdminStats {
+  total: number;
+  verified: number;
+  pending: number;
+  suspicious: number;
+  rejected: number;
+}
+export const getAdminStatsService = async (): Promise<AdminStats> => {
+  // Count everything in one go:
+  const [total, verified, pending, suspicious, rejected] = await Promise.all([
+    Document.countDocuments({}),
+    Document.countDocuments({ fraudStatus: "verified" }),
+    Document.countDocuments({ fraudStatus: "pending" }),
+    Document.countDocuments({ fraudStatus: "suspicious" }),
+    Document.countDocuments({ fraudStatus: "rejected" }),
+  ]);
+
+  return { total, verified, pending, suspicious, rejected };
+};
+
+export const getAllDocumentService = async (
+  searchQuery?: string,
+  category?: string
+) => {
+  try {
+    let query: any = {};
+
+    if (searchQuery) {
+      query.name = { $regex: new RegExp(searchQuery, "i") };
+    }
+
+    if (category) {
+      query.category = category;
+    }
+
+    return await Document.find(query)
+      .select(
+        "_id name filename hash category classification_confidence fraudStatus fraudReason uploadedBy createdAt"
+      )
+      .sort({ createdAt: -1 });
+  } catch (error: any) {
+    console.error("❌ Error fetching user documents:", error);
+    throw new CustomError(
+      "Error fetching user documents: " + error.message,
+      500
+    );
+  }
+};
+
+// Service to unshare a document from a user
+export const unshareDocumentService = async (
+  documentId: string,
+  userId: string,
+  adminId: string // Add this parameter
+): Promise<void> => {
+  try {
+    const document = await Document.findById(documentId);
+    if (!document) {
+      throw new CustomError("Document not found", 404);
+    }
+
+    // Get user details for activity log
+    const user = await User.findById(userId).select("name");
+    const userName = user ? user.name : userId;
+
+    // Remove the user from sharedWith array
+    document.sharedWith = document.sharedWith.filter(
+      (id) => id.toString() !== userId
+    );
+
+    // If no more users to share with, mark as not shared
+    if (document.sharedWith.length === 0) {
+      document.isShared = false;
+      document.sharedBy = undefined;
+      document.sharedAt = undefined;
+      document.sharingNote = "";
+    }
+
+    await document.save();
+
+    // Add activity record for unsharing
+    await new Activity({
+      type: "unshare",
+      user: adminId,
+      document: documentId,
+      status: "unshared",
+      details: `Access removed for user ${userName}`,
+    }).save();
+  } catch (error) {
+    console.error("❌ Error in unshareDocumentService:", error);
+    throw error;
+  }
+};
+// Service to get shared documents for a user
+export const getSharedDocumentsService = async (
+  userId: string
+): Promise<IDocument[]> => {
+  try {
+    // Find documents shared with the user
+    const documents = await Document.find({ isShared: true })
+      .populate("uploadedBy", "name email") // Populate the uploader
+      .populate("sharedBy", "name email") // Populate who shared it
+      .populate("sharedWith", "name email") // Populate users it's shared with
+      .sort({ sharedAt: -1 });
+
+    return documents;
+  } catch (error) {
+    console.error("❌ Error in getSharedDocumentsService:", error);
+    throw error;
+  }
+};
+
+// Service for sharing documents
+export const shareDocumentService = async (
+  documentId: string,
+  userIds: string[],
+  adminId: string,
+  note?: string
+): Promise<IDocument> => {
+  try {
+    // Find the document
+    const document = await Document.findById(documentId);
+    if (!document) {
+      throw new CustomError("Document not found", 404);
+    }
+
+    // Verify that all user IDs exist
+    const users = await User.find({ _id: { $in: userIds } });
+    if (users.length !== userIds.length) {
+      throw new CustomError("One or more user IDs are invalid", 400);
+    }
+
+    // Update the document with sharing information
+    document.isShared = true;
+    document.sharedWith = userIds.map((id) => new mongoose.Types.ObjectId(id));
+    document.sharedBy = new mongoose.Types.ObjectId(adminId);
+    document.sharedAt = new Date();
+    document.sharingNote = note || "";
+
+    // Save the updated document
+    await document.save();
+
+    // Add activity record for sharing
+    await new Activity({
+      type: "share",
+      user: adminId,
+      document: documentId,
+      status: "shared",
+      details: `Shared with ${userIds.length} user(s)${
+        note ? `: ${note}` : ""
+      }`,
+    }).save();
+
+    return document;
+  } catch (error) {
+    console.error("❌ Error in shareDocumentService:", error);
+    throw error;
   }
 };

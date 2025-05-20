@@ -48,3 +48,4 @@ coverage/
 pnpm-lock.yaml
 .pnpm-debug.log
 bun.lockb
+.vercel
