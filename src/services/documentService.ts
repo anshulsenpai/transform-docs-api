@@ -5,11 +5,14 @@ import fs from "fs/promises";
 import path from "path";
 import poppler from "pdf-poppler";
 import Tesseract from "tesseract.js";
-import Document from "../models/Document";
+import Document, { IDocument } from "../models/Document";
 import { RESPONSE_MESSAGES } from "../constants/responseMessages";
 import { CustomError } from "../utils/customError";
 import { CATEGORIES } from "../constants/categories";
 import { runFraudChecks } from "../utils/fraudDetection";
+import User from "../models/User";
+import mongoose from "mongoose";
+import Activity from "../models/Activity";
 
 const tokenizer = new natural.WordTokenizer();
 
@@ -323,6 +326,13 @@ export const uploadDocumentService = async (
 
     console.log("✅ Document saved");
 
+    await new Activity({
+      type: "upload",
+      user: userId,
+      document: newDocument._id,
+      status: "pending",
+    }).save();
+
     return {
       message: RESPONSE_MESSAGES.DOCUMENT_UPLOADED,
       document: newDocument,
@@ -372,12 +382,22 @@ export const downloadFileService = async (
   userId: string
 ): Promise<string> => {
   try {
-    // ✅ Find the document in the database
-    const document = await Document.findOne({
+    // First, check if the user uploaded the document
+    let document = await Document.findOne({
       _id: fileId,
       uploadedBy: userId,
     });
 
+    // If not found as owner, check if the document is shared with this user
+    if (!document) {
+      document = await Document.findOne({
+        _id: fileId,
+        isShared: true,
+        sharedWith: userId,
+      });
+    }
+
+    // If still not found, user has no access
     if (!document) {
       throw new CustomError(
         "Forbidden: You do not have access to this file",
@@ -453,5 +473,116 @@ export const getAllDocumentService = async (
       "Error fetching user documents: " + error.message,
       500
     );
+  }
+};
+
+// Service to unshare a document from a user
+export const unshareDocumentService = async (
+  documentId: string,
+  userId: string,
+  adminId: string // Add this parameter
+): Promise<void> => {
+  try {
+    const document = await Document.findById(documentId);
+    if (!document) {
+      throw new CustomError("Document not found", 404);
+    }
+
+    // Get user details for activity log
+    const user = await User.findById(userId).select("name");
+    const userName = user ? user.name : userId;
+
+    // Remove the user from sharedWith array
+    document.sharedWith = document.sharedWith.filter(
+      (id) => id.toString() !== userId
+    );
+
+    // If no more users to share with, mark as not shared
+    if (document.sharedWith.length === 0) {
+      document.isShared = false;
+      document.sharedBy = undefined;
+      document.sharedAt = undefined;
+      document.sharingNote = "";
+    }
+
+    await document.save();
+
+    // Add activity record for unsharing
+    await new Activity({
+      type: "unshare",
+      user: adminId,
+      document: documentId,
+      status: "unshared",
+      details: `Access removed for user ${userName}`,
+    }).save();
+  } catch (error) {
+    console.error("❌ Error in unshareDocumentService:", error);
+    throw error;
+  }
+};
+// Service to get shared documents for a user
+export const getSharedDocumentsService = async (
+  userId: string
+): Promise<IDocument[]> => {
+  try {
+    // Find documents shared with the user
+    const documents = await Document.find({ isShared: true })
+      .populate("uploadedBy", "name email") // Populate the uploader
+      .populate("sharedBy", "name email") // Populate who shared it
+      .populate("sharedWith", "name email") // Populate users it's shared with
+      .sort({ sharedAt: -1 });
+
+    return documents;
+  } catch (error) {
+    console.error("❌ Error in getSharedDocumentsService:", error);
+    throw error;
+  }
+};
+
+// Service for sharing documents
+export const shareDocumentService = async (
+  documentId: string,
+  userIds: string[],
+  adminId: string,
+  note?: string
+): Promise<IDocument> => {
+  try {
+    // Find the document
+    const document = await Document.findById(documentId);
+    if (!document) {
+      throw new CustomError("Document not found", 404);
+    }
+
+    // Verify that all user IDs exist
+    const users = await User.find({ _id: { $in: userIds } });
+    if (users.length !== userIds.length) {
+      throw new CustomError("One or more user IDs are invalid", 400);
+    }
+
+    // Update the document with sharing information
+    document.isShared = true;
+    document.sharedWith = userIds.map((id) => new mongoose.Types.ObjectId(id));
+    document.sharedBy = new mongoose.Types.ObjectId(adminId);
+    document.sharedAt = new Date();
+    document.sharingNote = note || "";
+
+    // Save the updated document
+    await document.save();
+
+    // Add activity record for sharing
+    await new Activity({
+      type: "share",
+      user: adminId,
+      document: documentId,
+      status: "shared",
+      details: `Shared with ${userIds.length} user(s)${
+        note ? `: ${note}` : ""
+      }`,
+    }).save();
+
+    return document;
+  } catch (error) {
+    console.error("❌ Error in shareDocumentService:", error);
+    throw error;
   }
 };
